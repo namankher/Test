@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  database:
+    image: postgres:13
+    container_name: manufacturing_db
+    environment:
+      POSTGRES_USER: manufacturing_user
+      POSTGRES_PASSWORD: manufacturing_password
+      POSTGRES_DB: manufacturing_quotes
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - manufacturing_network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: manufacturing_backend
+    environment:
+      - DATABASE_URL=postgresql://manufacturing_user:manufacturing_password@database:5432/manufacturing_quotes
+      - SECRET_KEY=your-super-secret-key-change-this-in-production
+      - DEBUG=true
+      - UPLOAD_DIR=/app/uploads
+      - MAX_FILE_SIZE=50
+    volumes:
+      - ./backend:/app
+      - uploaded_files:/app/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      - database
+    networks:
+      - manufacturing_network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: manufacturing_frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - manufacturing_network
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    command: npm start
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: manufacturing_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - manufacturing_network
+
+volumes:
+  postgres_data:
+  uploaded_files:
+
+networks:
+  manufacturing_network:
+    driver: bridge
